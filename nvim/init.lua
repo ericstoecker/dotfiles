@@ -630,7 +630,12 @@ require('lazy').setup({
           },
         },
         ts_ls = {},
-        jdtls = {},
+        jdtls = {
+          cmd = {
+            'jdtls',
+            '--jvm-arg=-javaagent:' .. vim.fn.expand '~/.local/share/lombok/lombok.jar',
+          },
+        },
       }
 
       -- Ensure the servers and tools above are installed
