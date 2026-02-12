@@ -635,6 +635,9 @@ require('lazy').setup({
             'jdtls',
             '--jvm-arg=-javaagent:' .. vim.fn.expand '~/.local/share/lombok/lombok.jar',
           },
+          init_options = {
+            bundles = require('spring_boot').java_extensions(),
+          },
         },
       }
 
@@ -660,6 +663,8 @@ require('lazy').setup({
         'gofumpt',
         'prettier',
         'google-java-format',
+        -- Spring
+        'vscode-spring-boot-tools',
         -- Linters
         'eslint_d',
       }
@@ -671,6 +676,8 @@ require('lazy').setup({
         vim.lsp.config(name, server)
         vim.lsp.enable(name)
       end
+
+      require('spring_boot').init_lsp_commands()
 
       -- Special Lua Config, as recommended by neovim help docs
       vim.lsp.config('lua_ls', {
@@ -949,6 +956,15 @@ require('lazy').setup({
   { -- Git diff viewer and merge tool
     'sindrets/diffview.nvim',
     cmd = { 'DiffviewOpen', 'DiffviewClose', 'DiffviewFileHistory' },
+  },
+
+  { -- Spring Boot LS integration for jdtls
+    'JavaHello/spring-boot.nvim',
+    ft = { 'java', 'yaml', 'jproperties' },
+    dependencies = {
+      'mfussenegger/nvim-jdtls',
+    },
+    opts = {},
   },
 
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
