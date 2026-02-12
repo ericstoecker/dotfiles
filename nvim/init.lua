@@ -91,7 +91,7 @@ vim.g.mapleader = ' '
 vim.g.maplocalleader = ' '
 
 -- Set to true if you have a Nerd Font installed and selected in the terminal
-vim.g.have_nerd_font = false
+vim.g.have_nerd_font = true
 
 -- [[ Setting options ]]
 -- See `:help vim.o`
@@ -313,6 +313,7 @@ require('lazy').setup({
         { '<leader>s', group = '[S]earch', mode = { 'n', 'v' } },
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
+        { '<leader>r', group = '[R]efactor', mode = { 'n', 'v' } },
       },
     },
   },
@@ -400,15 +401,14 @@ require('lazy').setup({
       local builtin = require 'telescope.builtin'
       vim.keymap.set('n', '<leader>sh', builtin.help_tags, { desc = '[S]earch [H]elp' })
       vim.keymap.set('n', '<leader>sk', builtin.keymaps, { desc = '[S]earch [K]eymaps' })
-      vim.keymap.set('n', '<leader>sf', builtin.find_files, { desc = '[S]earch [F]iles' })
       vim.keymap.set('n', '<leader>ss', builtin.builtin, { desc = '[S]earch [S]elect Telescope' })
-      vim.keymap.set({ 'n', 'v' }, '<leader>sw', builtin.grep_string, { desc = '[S]earch current [W]ord' })
-      vim.keymap.set('n', '<leader>sg', builtin.live_grep, { desc = '[S]earch by [G]rep' })
       vim.keymap.set('n', '<leader>sd', builtin.diagnostics, { desc = '[S]earch [D]iagnostics' })
-      vim.keymap.set('n', '<leader>sr', builtin.resume, { desc = '[S]earch [R]esume' })
-      vim.keymap.set('n', '<leader>s.', builtin.oldfiles, { desc = '[S]earch Recent Files ("." for repeat)' })
-      vim.keymap.set('n', '<leader>sc', builtin.commands, { desc = '[S]earch [C]ommands' })
       vim.keymap.set('n', '<leader><leader>', builtin.buffers, { desc = '[ ] Find existing buffers' })
+
+      -- Custom shortcuts
+      vim.keymap.set('n', '<leader>ff', builtin.find_files, { desc = '[F]ind [F]iles' })
+      vim.keymap.set('n', '<leader>fw', builtin.live_grep, { desc = '[F]ind [W]ord in files' })
+      vim.keymap.set('n', '<leader>fr', builtin.oldfiles, { desc = '[F]ind [R]ecent files' })
 
       -- This runs on LSP attach per buffer (see main LSP attach function in 'neovim/nvim-lspconfig' config for more info,
       -- it is better explained there). This allows easily switching between pickers if you prefer using something else!
@@ -544,6 +544,15 @@ require('lazy').setup({
           --  For example, in C this would take you to the header.
           map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
+          -- Refactoring keymaps
+          map('<leader>rr', vim.lsp.buf.rename, '[R]efactor [R]ename')
+          map('<leader>rem', function()
+            vim.lsp.buf.code_action { context = { only = { 'refactor.extract.function', 'refactor.extract.method' } } }
+          end, '[R]efactor [E]xtract [M]ethod', 'v')
+          map('<leader>rev', function()
+            vim.lsp.buf.code_action { context = { only = { 'refactor.extract.variable' } } }
+          end, '[R]efactor [E]xtract [V]ariable', 'v')
+
           -- The following two autocommands are used to highlight references of the
           -- word under your cursor when your cursor rests there for a little while.
           --    See `:help CursorHold` for information about when this is executed
@@ -593,16 +602,19 @@ require('lazy').setup({
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
       --  See `:help lsp-config` for information about keys and how to configure
       local servers = {
-        -- clangd = {},
-        -- gopls = {},
-        -- pyright = {},
-        -- rust_analyzer = {},
-        --
-        -- Some languages (like typescript) have entire language plugins that can be useful:
-        --    https://github.com/pmizio/typescript-tools.nvim
-        --
-        -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
+        gopls = {
+          settings = {
+            gopls = {
+              analyses = {
+                unusedparams = true,
+              },
+              staticcheck = true,
+              gofumpt = true,
+            },
+          },
+        },
+        ts_ls = {},
+        jdtls = {},
       }
 
       -- Ensure the servers and tools above are installed
@@ -612,12 +624,24 @@ require('lazy').setup({
       --    :Mason
       --
       -- You can press `g?` for help in this menu.
-      local ensure_installed = vim.tbl_keys(servers or {})
-      vim.list_extend(ensure_installed, {
-        'lua_ls', -- Lua Language server
-        'stylua', -- Used to format Lua code
-        -- You can add other tools here that you want Mason to install
-      })
+      -- Mason package names don't always match lspconfig names.
+      -- For example, lspconfig uses 'ts_ls' but Mason calls it 'typescript-language-server'.
+      -- So we list Mason package names explicitly here.
+      local ensure_installed = {
+        -- Language servers
+        'gopls',
+        'typescript-language-server',
+        'jdtls',
+        'lua-language-server',
+        -- Formatters
+        'stylua',
+        'goimports',
+        'gofumpt',
+        'prettier',
+        'google-java-format',
+        -- Linters
+        'eslint_d',
+      }
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -686,11 +710,15 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         lua = { 'stylua' },
-        -- Conform can also run multiple formatters sequentially
-        -- python = { "isort", "black" },
-        --
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { "prettierd", "prettier", stop_after_first = true },
+        go = { 'goimports', 'gofumpt' },
+        javascript = { 'prettier' },
+        javascriptreact = { 'prettier' },
+        typescript = { 'prettier' },
+        typescriptreact = { 'prettier' },
+        css = { 'prettier' },
+        html = { 'prettier' },
+        json = { 'prettier' },
+        java = { 'google-java-format' },
       },
     },
   },
@@ -766,6 +794,7 @@ require('lazy').setup({
         -- By default, you may press `<c-space>` to show the documentation.
         -- Optionally, set `auto_show = true` to show the documentation after a delay.
         documentation = { auto_show = false, auto_show_delay_ms = 500 },
+        keyword = { range = 'full' },
       },
 
       sources = {
@@ -786,6 +815,27 @@ require('lazy').setup({
       -- Shows a signature help window while you type arguments for a function
       signature = { enabled = true },
     },
+    config = function(_, opts)
+      require('blink.cmp').setup(opts)
+
+      -- Workaround: some LSP servers (e.g. gopls) occasionally send completions
+      -- with a zero-width textEdit range, causing text to be inserted instead of
+      -- replacing the typed prefix (e.g. "U" + accept "User" = "UUser").
+      -- This patch detects zero-width ranges and falls back to blink.cmp's own
+      -- keyword-based range detection.
+      local text_edits = require('blink.cmp.lib.text_edits')
+      local orig_get_from_item = text_edits.get_from_item
+      text_edits.get_from_item = function(item)
+        local edit = orig_get_from_item(item)
+        if edit and edit.range
+          and edit.range.start.line == edit.range['end'].line
+          and edit.range.start.character == edit.range['end'].character
+        then
+          return text_edits.guess(item)
+        end
+        return edit
+      end
+    end,
   },
 
   { -- You can easily change to a different colorscheme.
@@ -852,11 +902,11 @@ require('lazy').setup({
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     config = function()
-      local filetypes = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' }
+      local filetypes = { 'bash', 'c', 'css', 'diff', 'go', 'gomod', 'gosum', 'html', 'java', 'javascript', 'json', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'tsx', 'typescript', 'vim', 'vimdoc' }
       require('nvim-treesitter').install(filetypes)
       vim.api.nvim_create_autocmd('FileType', {
         pattern = filetypes,
-        callback = function() vim.treesitter.start() end,
+        callback = function() pcall(vim.treesitter.start) end,
       })
     end,
   },
