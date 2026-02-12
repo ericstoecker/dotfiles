@@ -314,6 +314,7 @@ require('lazy').setup({
         { '<leader>t', group = '[T]oggle' },
         { '<leader>h', group = 'Git [H]unk', mode = { 'n', 'v' } },
         { '<leader>r', group = '[R]efactor', mode = { 'n', 'v' } },
+        { '<leader>g', group = '[G]it' },
       },
     },
   },
@@ -469,6 +470,15 @@ require('lazy').setup({
 
       -- Shortcut for searching your Neovim configuration files
       vim.keymap.set('n', '<leader>sn', function() builtin.find_files { cwd = vim.fn.stdpath 'config' } end, { desc = '[S]earch [N]eovim files' })
+
+      -- Git keybindings
+      vim.keymap.set('n', '<leader>gc', builtin.git_commits, { desc = '[G]it [C]ommits' })
+      vim.keymap.set('n', '<leader>gb', builtin.git_bcommits, { desc = '[G]it [B]uffer commits' })
+      vim.keymap.set('n', '<leader>gs', builtin.git_status, { desc = '[G]it [S]tatus' })
+      vim.keymap.set('n', '<leader>gd', '<cmd>DiffviewOpen<cr>', { desc = '[G]it [D]iff view' })
+      vim.keymap.set('n', '<leader>gh', '<cmd>DiffviewFileHistory %<cr>', { desc = '[G]it file [H]istory' })
+      vim.keymap.set('n', '<leader>gm', '<cmd>DiffviewOpen<cr>', { desc = '[G]it [M]erge view' })
+      vim.keymap.set('n', '<leader>gq', '<cmd>DiffviewClose<cr>', { desc = '[G]it diff [Q]uit' })
     end,
   },
 
@@ -546,12 +556,18 @@ require('lazy').setup({
 
           -- Refactoring keymaps
           map('<leader>rr', vim.lsp.buf.rename, '[R]efactor [R]ename')
-          map('<leader>rem', function()
-            vim.lsp.buf.code_action { context = { only = { 'refactor.extract.function', 'refactor.extract.method' } } }
-          end, '[R]efactor [E]xtract [M]ethod', 'v')
-          map('<leader>rev', function()
-            vim.lsp.buf.code_action { context = { only = { 'refactor.extract.variable' } } }
-          end, '[R]efactor [E]xtract [V]ariable', 'v')
+          map(
+            '<leader>rem',
+            function() vim.lsp.buf.code_action { context = { only = { 'refactor.extract.function', 'refactor.extract.method' } } } end,
+            '[R]efactor [E]xtract [M]ethod',
+            'v'
+          )
+          map(
+            '<leader>rev',
+            function() vim.lsp.buf.code_action { context = { only = { 'refactor.extract.variable' } } } end,
+            '[R]efactor [E]xtract [V]ariable',
+            'v'
+          )
 
           -- The following two autocommands are used to highlight references of the
           -- word under your cursor when your cursor rests there for a little while.
@@ -823,14 +839,11 @@ require('lazy').setup({
       -- replacing the typed prefix (e.g. "U" + accept "User" = "UUser").
       -- This patch detects zero-width ranges and falls back to blink.cmp's own
       -- keyword-based range detection.
-      local text_edits = require('blink.cmp.lib.text_edits')
+      local text_edits = require 'blink.cmp.lib.text_edits'
       local orig_get_from_item = text_edits.get_from_item
       text_edits.get_from_item = function(item)
         local edit = orig_get_from_item(item)
-        if edit and edit.range
-          and edit.range.start.line == edit.range['end'].line
-          and edit.range.start.character == edit.range['end'].character
-        then
+        if edit and edit.range and edit.range.start.line == edit.range['end'].line and edit.range.start.character == edit.range['end'].character then
           return text_edits.guess(item)
         end
         return edit
@@ -843,20 +856,16 @@ require('lazy').setup({
     -- change the command in the config to whatever the name of that colorscheme is.
     --
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
+    'catppuccin/nvim',
+    name = 'catppuccin',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
-      ---@diagnostic disable-next-line: missing-fields
-      require('tokyonight').setup {
-        styles = {
-          comments = { italic = false }, -- Disable italics in comments
-        },
+      require('catppuccin').setup {
+        flavour = 'mocha',
+        no_italic = true,
       }
 
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
+      vim.cmd.colorscheme 'catppuccin'
     end,
   },
 
@@ -902,13 +911,39 @@ require('lazy').setup({
   { -- Highlight, edit, and navigate code
     'nvim-treesitter/nvim-treesitter',
     config = function()
-      local filetypes = { 'bash', 'c', 'css', 'diff', 'go', 'gomod', 'gosum', 'html', 'java', 'javascript', 'json', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'tsx', 'typescript', 'vim', 'vimdoc' }
+      local filetypes = {
+        'bash',
+        'c',
+        'css',
+        'diff',
+        'go',
+        'gomod',
+        'gosum',
+        'html',
+        'java',
+        'javascript',
+        'json',
+        'lua',
+        'luadoc',
+        'markdown',
+        'markdown_inline',
+        'query',
+        'tsx',
+        'typescript',
+        'vim',
+        'vimdoc',
+      }
       require('nvim-treesitter').install(filetypes)
       vim.api.nvim_create_autocmd('FileType', {
         pattern = filetypes,
         callback = function() pcall(vim.treesitter.start) end,
       })
     end,
+  },
+
+  { -- Git diff viewer and merge tool
+    'sindrets/diffview.nvim',
+    cmd = { 'DiffviewOpen', 'DiffviewClose', 'DiffviewFileHistory' },
   },
 
   -- The following comments only work if you have downloaded the kickstart repo, not just copy pasted the
@@ -925,7 +960,7 @@ require('lazy').setup({
   -- require 'kickstart.plugins.lint',
   -- require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree',
-  -- require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
+  require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
