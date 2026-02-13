@@ -558,9 +558,6 @@ require('lazy').setup({
           map('<leader>rr', function()
             require('custom.java-package-rename').smart_rename()
           end, '[R]efactor [R]ename')
-          map('<leader>rm', function()
-            require('custom.java-package-rename').telescope_move_files()
-          end, '[R]efactor [M]ove file')
           map(
             '<leader>rem',
             function() vim.lsp.buf.code_action { context = { only = { 'refactor.extract.function', 'refactor.extract.method' } } } end,

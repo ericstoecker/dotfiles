@@ -269,64 +269,95 @@ local function collect_packages(project_root)
 end
 
 -- ============================================================
--- Move files to package
+-- General file move with language-aware import updating
 -- ============================================================
 
-local function move_files_to_package(project_root, filepaths, dest_pkg)
+--- Derives the Java package from a directory path relative to a source root.
+--- Returns nil if the directory is not under a known source root.
+local function dir_to_java_package(project_root, dir)
+  for _, root in ipairs(source_roots) do
+    local base = project_root .. '/' .. root
+    if dir:sub(1, #base) == base then
+      local rel = dir:sub(#base + 2)
+      if rel == '' then
+        return ''
+      end
+      return rel:gsub('/', '.')
+    end
+  end
+  return nil
+end
+
+local function update_java_imports_for_moved_file(project_root, old_pkg, new_pkg, class)
+  local old_fqcn_escaped = old_pkg:gsub('%.', '%%.') .. '%.' .. class
+  local new_fqcn = new_pkg .. '.' .. class
+  local all_java = collect_java_files(project_root)
+  local affected = {}
+  for _, jfile in ipairs(all_java) do
+    local jlines = vim.fn.readfile(jfile)
+    local changed = false
+    for j, jline in ipairs(jlines) do
+      local updated = jline:gsub(
+        '(import%s+)' .. old_fqcn_escaped .. '(%s*;)',
+        '%1' .. new_fqcn .. '%2'
+      )
+      updated = updated:gsub(
+        '(import%s+static%s+)' .. old_fqcn_escaped .. '(%.[%w%.]+%s*;)',
+        '%1' .. new_fqcn .. '%2'
+      )
+      if updated ~= jline then
+        jlines[j] = updated
+        changed = true
+      end
+    end
+    if changed then
+      vim.fn.writefile(jlines, jfile)
+      table.insert(affected, jfile)
+    end
+  end
+  return affected
+end
+
+local function move_files_to_dir(project_root, filepaths, dest_dir)
+  vim.fn.mkdir(dest_dir, 'p')
   local moved_count = 0
+  local java_moved = false
 
   for _, filepath in ipairs(filepaths) do
-    local info = parse_java_file(project_root, filepath)
-    if not info then
-      vim.notify('Skipping (not in source root): ' .. filepath, vim.log.levels.WARN)
+    local filename = vim.fn.fnamemodify(filepath, ':t')
+    local new_path = dest_dir .. '/' .. filename
+
+    if filepath == new_path then
+      vim.notify('Skipping (already in destination): ' .. filename, vim.log.levels.WARN)
       goto continue
     end
 
-    local old_pkg = info.package
-    local class = info.class
-    local filename = vim.fn.fnamemodify(filepath, ':t')
-    local dest_rel = package_to_path(dest_pkg)
-    local new_dir = project_root .. '/' .. info.source_root .. '/' .. dest_rel
-    local new_path = new_dir .. '/' .. filename
-
-    vim.fn.mkdir(new_dir, 'p')
+    local old_dir = vim.fn.fnamemodify(filepath, ':h')
     vim.fn.rename(filepath, new_path)
     moved_count = moved_count + 1
 
-    -- Update package declaration in the moved file
-    local lines = vim.fn.readfile(new_path)
-    for i, line in ipairs(lines) do
-      local new_line = line:gsub('^(%s*package%s+)[%w%.]+(%s*;)', '%1' .. dest_pkg .. '%2')
-      if new_line ~= line then
-        lines[i] = new_line
-        break
-      end
-    end
-    vim.fn.writefile(lines, new_path)
+    -- Java-specific: update package declaration and imports
+    if filename:match('%.java$') and project_root then
+      java_moved = true
+      local old_pkg = dir_to_java_package(project_root, old_dir)
+      local new_pkg = dir_to_java_package(project_root, dest_dir)
 
-    -- Update imports across the project: old_pkg.ClassName -> dest_pkg.ClassName
-    local old_fqcn_escaped = old_pkg:gsub('%.', '%%.') .. '%.' .. class
-    local new_fqcn = dest_pkg .. '.' .. class
-    local all_java = collect_java_files(project_root)
-    for _, jfile in ipairs(all_java) do
-      local jlines = vim.fn.readfile(jfile)
-      local changed = false
-      for j, jline in ipairs(jlines) do
-        local updated = jline:gsub(
-          '(import%s+)' .. old_fqcn_escaped .. '(%s*;)',
-          '%1' .. new_fqcn .. '%2'
-        )
-        updated = updated:gsub(
-          '(import%s+static%s+)' .. old_fqcn_escaped .. '(%.%w+%s*;)',
-          '%1' .. new_fqcn .. '%2'
-        )
-        if updated ~= jline then
-          jlines[j] = updated
-          changed = true
+      if old_pkg and new_pkg and old_pkg ~= new_pkg then
+        local class = vim.fn.fnamemodify(filename, ':r')
+
+        -- Update package declaration in the moved file
+        local lines = vim.fn.readfile(new_path)
+        for i, line in ipairs(lines) do
+          local new_line = line:gsub('^(%s*package%s+)[%w%.]+(%s*;)', '%1' .. new_pkg .. '%2')
+          if new_line ~= line then
+            lines[i] = new_line
+            break
+          end
         end
-      end
-      if changed then
-        vim.fn.writefile(jlines, jfile)
+        vim.fn.writefile(lines, new_path)
+
+        -- Update imports across the project
+        update_java_imports_for_moved_file(project_root, old_pkg, new_pkg, class)
       end
     end
 
@@ -344,50 +375,78 @@ local function move_files_to_package(project_root, filepaths, dest_pkg)
     end
 
     -- Clean up empty old directory
-    local old_dir = vim.fn.fnamemodify(filepath, ':h')
-    local base = project_root .. '/' .. info.source_root
-    remove_empty_dirs(old_dir, base)
+    if project_root then
+      remove_empty_dirs(old_dir, project_root)
+    end
 
     ::continue::
   end
 
-  -- Reload any buffers that had import changes
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.api.nvim_buf_is_loaded(buf) then
-      local name = vim.api.nvim_buf_get_name(buf)
-      if name:match('%.java$') then
-        vim.api.nvim_buf_call(buf, function()
-          vim.cmd('edit!')
-        end)
+  -- Reload any open java buffers that may have had imports rewritten
+  if java_moved then
+    for _, buf in ipairs(vim.api.nvim_list_bufs()) do
+      if vim.api.nvim_buf_is_loaded(buf) then
+        local name = vim.api.nvim_buf_get_name(buf)
+        if name:match('%.java$') then
+          vim.api.nvim_buf_call(buf, function()
+            vim.cmd('edit!')
+          end)
+        end
       end
     end
+
+    vim.schedule(function()
+      vim.cmd('LspRestart jdtls')
+    end)
   end
 
-  vim.notify(
-    string.format('Moved %d file(s) to %s', moved_count, dest_pkg),
-    vim.log.levels.INFO
-  )
-
-  vim.schedule(function()
-    vim.cmd('LspRestart jdtls')
-  end)
+  vim.notify(string.format('Moved %d file(s) to %s', moved_count, dest_dir), vim.log.levels.INFO)
 end
 
 -- ============================================================
 -- Telescope-based file move picker
 -- ============================================================
 
+--- Collects all directories in the project for the destination picker.
+local function collect_directories(project_root)
+  local dirs = {}
+  local seen = {}
+  local all = vim.fn.globpath(project_root, '**/', false, true)
+  for _, d in ipairs(all) do
+    -- Skip hidden dirs and build output
+    local rel = d:sub(#project_root + 2):gsub('/$', '')
+    if rel ~= ''
+      and not rel:match('^%.')
+      and not rel:match('/%.')
+      and not rel:match('^target/')
+      and not rel:match('^build/')
+      and not rel:match('^node_modules/')
+      and not seen[rel]
+    then
+      seen[rel] = true
+      table.insert(dirs, rel)
+    end
+  end
+  table.sort(dirs)
+  return dirs
+end
+
 function M.telescope_move_files()
   local ok, _ = pcall(require, 'telescope')
   if not ok then
-    vim.notify('Telescope is required for JavaMoveFile', vim.log.levels.ERROR)
+    vim.notify('Telescope is required for MoveFile', vim.log.levels.ERROR)
     return
   end
 
   local project_root = find_project_root()
   if not project_root then
-    vim.notify('Could not find project root (no pom.xml or build.gradle).', vim.log.levels.ERROR)
-    return
+    -- Fall back to git root or cwd
+    local git_root = vim.fn.systemlist('git rev-parse --show-toplevel')[1]
+    if vim.v.shell_error == 0 and git_root ~= '' then
+      project_root = git_root
+    else
+      project_root = vim.fn.getcwd()
+    end
   end
 
   local pickers = require('telescope.pickers')
@@ -396,18 +455,25 @@ function M.telescope_move_files()
   local actions = require('telescope.actions')
   local action_state = require('telescope.actions.state')
 
-  local java_files = collect_java_files(project_root)
-  -- Make paths relative for display
+  -- Collect all files (not just Java)
+  local all_files = vim.fn.globpath(project_root, '**/*', false, true)
   local entries = {}
-  for _, f in ipairs(java_files) do
-    table.insert(entries, {
-      display = f:sub(#project_root + 2),
-      path = f,
-    })
+  for _, f in ipairs(all_files) do
+    if vim.fn.isdirectory(f) == 0
+      and not f:match('/%.git/')
+      and not f:match('/target/')
+      and not f:match('/build/')
+      and not f:match('/node_modules/')
+    then
+      table.insert(entries, {
+        display = f:sub(#project_root + 2),
+        path = f,
+      })
+    end
   end
 
   pickers.new({}, {
-    prompt_title = 'Select Java files to move (Tab to select, Enter to confirm)',
+    prompt_title = 'Select files to move (Tab to select, Enter to confirm)',
     finder = finders.new_table {
       results = entries,
       entry_maker = function(entry)
@@ -419,12 +485,11 @@ function M.telescope_move_files()
       end,
     },
     sorter = conf.generic_sorter({}),
-    attach_mappings = function(prompt_bufnr, map)
+    attach_mappings = function(prompt_bufnr)
       actions.select_default:replace(function()
         local picker = action_state.get_current_picker(prompt_bufnr)
         local selections = picker:get_multi_selection()
 
-        -- If nothing was multi-selected, use the single highlighted entry
         if #selections == 0 then
           local entry = action_state.get_selected_entry()
           if entry then
@@ -443,13 +508,13 @@ function M.telescope_move_files()
           table.insert(filepaths, sel.value)
         end
 
-        -- Now prompt for destination package
-        local packages = collect_packages(project_root)
+        -- Destination picker: show project directories
+        local directories = collect_directories(project_root)
 
         pickers.new({}, {
-          prompt_title = 'Destination package (type new or select existing)',
+          prompt_title = 'Destination directory (type new or select existing)',
           finder = finders.new_table {
-            results = packages,
+            results = directories,
           },
           sorter = conf.generic_sorter({}),
           attach_mappings = function(dest_bufnr)
@@ -458,14 +523,14 @@ function M.telescope_move_files()
               local prompt = action_state.get_current_picker(dest_bufnr):_get_prompt()
               actions.close(dest_bufnr)
 
-              -- Use the selected entry if it exists, otherwise use what was typed
-              local dest_pkg = dest_entry and dest_entry[1] or prompt
-              if not dest_pkg or dest_pkg == '' then
-                vim.notify('No destination package specified.', vim.log.levels.WARN)
+              local dest_rel = dest_entry and dest_entry[1] or prompt
+              if not dest_rel or dest_rel == '' then
+                vim.notify('No destination specified.', vim.log.levels.WARN)
                 return
               end
 
-              move_files_to_package(project_root, filepaths, dest_pkg)
+              local dest_dir = project_root .. '/' .. dest_rel
+              move_files_to_dir(project_root, filepaths, dest_dir)
             end)
             return true
           end,
@@ -581,11 +646,15 @@ function M.setup()
     desc = 'Rename a Java package (move files + update imports)',
   })
 
-  vim.api.nvim_create_user_command('JavaMoveFile', function()
+  vim.api.nvim_create_user_command('MoveFile', function()
     M.telescope_move_files()
   end, {
-    desc = 'Move Java files to a different package (Telescope picker)',
+    desc = 'Move files to a different directory (updates Java imports if applicable)',
   })
+
+  vim.keymap.set('n', '<leader>rm', function()
+    M.telescope_move_files()
+  end, { desc = '[R]efactor [M]ove file' })
 end
 
 return M
