@@ -555,7 +555,9 @@ require('lazy').setup({
           map('grD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
           -- Refactoring keymaps
-          map('<leader>rr', vim.lsp.buf.rename, '[R]efactor [R]ename')
+          map('<leader>rr', function()
+            require('custom.java-package-rename').smart_rename()
+          end, '[R]efactor [R]ename')
           map(
             '<leader>rem',
             function() vim.lsp.buf.code_action { context = { only = { 'refactor.extract.function', 'refactor.extract.method' } } } end,
@@ -1014,6 +1016,8 @@ require('lazy').setup({
     },
   },
 })
+
+require('custom.java-package-rename').setup()
 
 -- The line beneath this is called `modeline`. See `:help modeline`
 -- vim: ts=2 sts=2 sw=2 et
