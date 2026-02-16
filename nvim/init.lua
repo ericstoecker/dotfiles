@@ -116,6 +116,9 @@ vim.o.showmode = false
 --  See `:help 'clipboard'`
 vim.schedule(function() vim.o.clipboard = 'unnamedplus' end)
 
+-- Disable line wrapping
+vim.o.wrap = false
+
 -- Enable break indent
 vim.o.breakindent = true
 
