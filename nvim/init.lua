@@ -310,9 +310,6 @@ require('lazy').setup({
             'jdtls',
             '--jvm-arg=-javaagent:' .. vim.fn.expand '~/.local/share/lombok/lombok.jar',
           },
-          init_options = {
-            bundles = require('spring_boot').java_extensions(),
-          },
         },
       }
 
@@ -328,8 +325,6 @@ require('lazy').setup({
         'gofumpt',
         'prettier',
         'google-java-format',
-        -- Spring
-        'vscode-spring-boot-tools',
         -- Linters
         'eslint_d',
       }
@@ -341,8 +336,6 @@ require('lazy').setup({
         vim.lsp.config(name, server)
         vim.lsp.enable(name)
       end
-
-      require('spring_boot').init_lsp_commands()
 
       vim.lsp.config('lua_ls', {
         on_init = function(client)
@@ -516,15 +509,6 @@ require('lazy').setup({
   { -- Git diff viewer and merge tool
     'sindrets/diffview.nvim',
     cmd = { 'DiffviewOpen', 'DiffviewClose', 'DiffviewFileHistory' },
-  },
-
-  { -- Spring Boot LS integration for jdtls
-    'JavaHello/spring-boot.nvim',
-    ft = { 'java', 'yaml', 'jproperties' },
-    dependencies = {
-      'mfussenegger/nvim-jdtls',
-    },
-    opts = {},
   },
 
   require 'kickstart.plugins.debug',
