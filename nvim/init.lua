@@ -305,12 +305,6 @@ require('lazy').setup({
           },
         },
         ts_ls = {},
-        jdtls = {
-          cmd = {
-            'jdtls',
-            '--jvm-arg=-javaagent:' .. vim.fn.expand '~/.local/share/lombok/lombok.jar',
-          },
-        },
       }
 
       local ensure_installed = {
@@ -325,6 +319,9 @@ require('lazy').setup({
         'gofumpt',
         'prettier',
         'google-java-format',
+        -- Java DAP
+        'java-debug-adapter',
+        'java-test',
         -- Linters
         'eslint_d',
       }
@@ -512,6 +509,7 @@ require('lazy').setup({
   },
 
   require 'kickstart.plugins.debug',
+  require 'kickstart.plugins.java',
 }, {
   ui = {
     icons = vim.g.have_nerd_font and {} or {
