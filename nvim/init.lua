@@ -335,6 +335,16 @@ require("lazy").setup({
 					},
 				},
 				ts_ls = {},
+				basedpyright = {
+					settings = {
+						basedpyright = {
+							analysis = {
+								typeCheckingMode = "standard",
+								autoImportCompletions = true,
+							},
+						},
+					},
+				},
 			}
 
 			local ensure_installed = {
@@ -352,6 +362,9 @@ require("lazy").setup({
 				-- Java DAP
 				"java-debug-adapter",
 				"java-test",
+				-- Python
+				"basedpyright",
+				"ruff",
 				-- Linters
 				"eslint_d",
 			}
@@ -433,6 +446,7 @@ require("lazy").setup({
 				html = { "prettier" },
 				json = { "prettier" },
 				java = { "google-java-format" },
+				python = { "ruff_organize_imports", "ruff_format" },
 			},
 		},
 	},
@@ -538,6 +552,8 @@ require("lazy").setup({
 				"query",
 				"tsx",
 				"typescript",
+				"python",
+				"toml",
 				"vim",
 				"vimdoc",
 			}
@@ -554,6 +570,17 @@ require("lazy").setup({
 	{ -- Git diff viewer and merge tool
 		"sindrets/diffview.nvim",
 		cmd = { "DiffviewOpen", "DiffviewClose", "DiffviewFileHistory" },
+	},
+
+	{ -- Virtual environment selector for Python
+		"linux-cultist/venv-selector.nvim",
+		dependencies = { "neovim/nvim-lspconfig", "nvim-telescope/telescope.nvim" },
+		branch = "regexp",
+		ft = "python",
+		keys = {
+			{ "<leader>cv", "<cmd>VenvSelect<cr>", desc = "Select [V]irtualenv", ft = "python" },
+		},
+		opts = {},
 	},
 
 	require("kickstart.plugins.debug"),
